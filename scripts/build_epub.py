@@ -56,8 +56,14 @@ def main() -> int:
         f"--resource-path={common.IMG_DIR}",
         "--metadata-file", str(meta_path),
         "-o", str(out),
-        *[str(f) for f in files],
     ]
+    cover = common.DATA / "cover.jpg"
+    if cover.exists():
+        cmd += [f"--epub-cover-image={cover}"]
+    css = common.DATA / "epub.css"
+    if css.exists():
+        cmd += ["--css", str(css)]
+    cmd += [str(f) for f in files]
     print(f"binding {len(files)} columns -> {out.name}")
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:

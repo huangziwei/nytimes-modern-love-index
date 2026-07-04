@@ -178,8 +178,10 @@ def extract_one(slug: str) -> dict | None:
         soup, property="og:title") or idx.get("title") or slug
     byl = meta(soup, name="byl")
     author = (byl or "").removeprefix("By ").strip() or None
+    # Prefer the index/URL date (original publication) over the page's
+    # published_time, which reprints overwrite with the re-publish date.
     published = meta(soup, property="article:published_time")
-    date = (published or idx.get("date") or "")[:10]
+    date = (idx.get("date") or published or "")[:10]
 
     body = soup.find("section", attrs={"name": "articleBody"}) or soup.find("article")
     if body is None:
@@ -246,15 +248,29 @@ def extract_one(slug: str) -> dict | None:
     }
 
 
+_MONTHS = ("January", "February", "March", "April", "May", "June", "July",
+           "August", "September", "October", "November", "December")
+
+
+def _pretty_date(iso: str) -> str:
+    try:
+        y, m, d = iso.split("-")
+        return f"{_MONTHS[int(m) - 1]} {int(d)}, {y}"
+    except (ValueError, IndexError):
+        return iso
+
+
 def to_markdown(rec: dict) -> str:
     lines = [f"# {rec['title']}", ""]
     meta_bits = []
     if rec["author"]:
         meta_bits.append(f"By {rec['author']}")
     if rec["date"]:
-        meta_bits.append(rec["date"])
+        meta_bits.append(_pretty_date(rec["date"]))
+    # Fenced div so the stylesheet can target the byline (renders as
+    # <div class="byline"><p>…</p></div>).
     if meta_bits:
-        lines += [f"*{' · '.join(meta_bits)}*", ""]
+        lines += ["::: byline", " · ".join(meta_bits), ":::", ""]
     lines += [b + "\n" for b in rec["blocks"]]
     return "\n".join(lines).strip() + "\n"
 
