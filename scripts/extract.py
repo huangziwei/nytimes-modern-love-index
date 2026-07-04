@@ -34,11 +34,26 @@ _PROMO = re.compile(
     r"|tiny love stories"              # separate NYT product cross-promo
     r"|/newsletters/love-letter"       # inline newsletter sign-up link
     r"|for the podcast, essays and more, visit"
-    r"|to hear modern love"            # podcast plug
+    r"|to hear modern love"            # podcast plug (footer)
+    r"|modern love: the podcast"       # podcast name (top/footer plugs)
+    r"|hear this essay read"           # "hear this essay read by <celebrity>"
+    r"|you can now hear this essay"
+    r"|read this essay on"
     r"|continue following our fashion"  # social-follow plug
     r"|to read past modern love columns"
     r"|modernlove@nytimes\.com"        # submission email
-    r"|e-?mail:\s*modernlove",
+    r"|e-?mail:\s*modernlove"
+    # editorial prefaces prepended to reprints / anniversary features
+    r"|to celebrate modern love"
+    r"|this week we present"
+    r"|series of special features"
+    r"|adapted for the television series"
+    r"|editor['’]?s?['’]? note"
+    r"|this essay is part of"
+    # editorial correction notes (top banner + dated footer)
+    r"|correction appended"
+    r"|^correction[s]?:"
+    r"|an earlier version of this",
     re.I,
 )
 
@@ -48,9 +63,9 @@ _LABELS = re.compile(r"^(advertisement|modern love)$", re.I)
 # Bio verbs that follow the author's name in a third-person end-of-essay bio.
 _BIO_VERB = re.compile(
     r"\b(is|was)\s+(a|an|the|now|currently|working|writing|based)\b"
-    r"|is the (author|editor|writer)\b|author of\b|lives? in\b|based in\b"
-    r"|teaches\b|\bwww\.|\.com\b|\bblog\b|led to a book"
-    r"|’s (first|latest|debut|memoir|novel|book|essay)\b",
+    r"|is the (author|editor|writer)\b|author of\b|lives? (in|near|with|outside)\b"
+    r"|based in\b|teaches\b|\bwww\.|\.com\b|\bblog\b|led to a book"
+    r"|['’]s (first|latest|debut|memoir|novel|book|essay)\b",
     re.I,
 )
 
@@ -113,10 +128,14 @@ def inline(node: Tag) -> str:
         if isinstance(c, NavigableString):
             parts.append(str(c))
         elif isinstance(c, Tag):
-            if c.name in ("em", "i"):
-                parts.append(f"*{inline(c)}*")
-            elif c.name in ("strong", "b"):
-                parts.append(f"**{inline(c)}**")
+            if c.name in ("em", "i", "strong", "b"):
+                # Empty/whitespace-only emphasis tags (NYT CMS artifacts) must
+                # not emit markers, or adjacent ones collide into `****`. Keep a
+                # space if the tag held one so words don't fuse.
+                inner = inline(c)
+                mark = "*" if c.name in ("em", "i") else "**"
+                parts.append(f"{mark}{inner}{mark}" if inner
+                             else (" " if c.get_text() else ""))
             elif c.name == "a":
                 txt = inline(c)
                 href = c.get("href", "")
@@ -125,7 +144,21 @@ def inline(node: Tag) -> str:
                 parts.append("\n")
             else:
                 parts.append(inline(c))
-    return "".join(parts).strip()
+    s = re.sub(r"\*{4,}", "", "".join(parts))     # merge colliding bold runs
+    return re.sub(r"[ \t]{2,}", " ", s).strip()   # tidy doubled spaces
+
+
+def clean_caption(cap_el: Tag | None) -> str:
+    """Figure caption with the NYT image credit removed.
+
+    Credits render as `Credit...<name>` (photographer/illustrator attribution) —
+    noise on the page and doubly so for TTS. We drop the credit and everything
+    after it, keeping any real descriptive caption that precedes it."""
+    if cap_el is None:
+        return ""
+    txt = inline(cap_el)
+    txt = re.split(r"Credit\s*(?:\.{2,}|…|\.\.\.)", txt, flags=re.I)[0].strip()
+    return txt if re.search(r"[A-Za-z0-9]", txt) else ""
 
 
 # ---- meta -----------------------------------------------------------------
@@ -186,8 +219,7 @@ def extract_one(slug: str) -> dict | None:
             if src:
                 img_n += 1
                 fn = fetch_image(src, slug, img_n)
-                cap_el = el.find("figcaption")
-                cap = inline(cap_el) if cap_el else ""
+                cap = clean_caption(el.find("figcaption"))
                 if fn:
                     images.append((fn, cap))
                     blocks.append(f"![{cap}]({fn})")
