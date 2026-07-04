@@ -9,6 +9,7 @@ each referenced image from NYT's open CDN.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import urllib.request
 from pathlib import Path
@@ -20,11 +21,9 @@ import common
 UA = {"User-Agent": common.UA}
 INDEX = {a["slug"]: a for a in json.loads((common.DATA / "articles.json").read_text())}
 
-# NYT's own promo/submission furniture that lives inside the article body but
-# isn't part of the essay. Matched case-insensitively against a paragraph.
-import re as _re  # noqa: E402
-
-_PROMO = _re.compile(
+# NYT's own promo/submission/social furniture that lives inside the article body
+# but isn't the essay. Matched case-insensitively against a whole paragraph.
+_PROMO = re.compile(
     r"sign up for love letter"
     r"|our weekly email about modern love"
     r"|^want more from modern love"
@@ -32,15 +31,52 @@ _PROMO = _re.compile(
     r"|to find previous modern love"
     r"|to submit a modern love essay"
     r"|modern love can be reached"
-    r"|tiny love stories"            # separate NYT product cross-promo, not essay
-    r"|/newsletters/love-letter"     # inline newsletter sign-up link
-    r"|for the podcast, essays and more, visit",
-    _re.I,
+    r"|tiny love stories"              # separate NYT product cross-promo
+    r"|/newsletters/love-letter"       # inline newsletter sign-up link
+    r"|for the podcast, essays and more, visit"
+    r"|to hear modern love"            # podcast plug
+    r"|continue following our fashion"  # social-follow plug
+    r"|to read past modern love columns"
+    r"|modernlove@nytimes\.com"        # submission email
+    r"|e-?mail:\s*modernlove",
+    re.I,
+)
+
+# Standalone furniture labels that appear as their own paragraph.
+_LABELS = re.compile(r"^(advertisement|modern love)$", re.I)
+
+# Bio verbs that follow the author's name in a third-person end-of-essay bio.
+_BIO_VERB = re.compile(
+    r"\b(is|was)\s+(a|an|the|now|currently|working|writing|based)\b"
+    r"|is the (author|editor|writer)\b|author of\b|lives? in\b|based in\b"
+    r"|teaches\b|\bwww\.|\.com\b|\bblog\b|led to a book"
+    r"|’s (first|latest|debut|memoir|novel|book|essay)\b",
+    re.I,
 )
 
 
+def _flatten_links(text: str) -> str:
+    """`[label](url)` -> `label`, so a bio opening with a linked author name
+    (`[Nicole Walker](https://…), who teaches …`) still starts with the name."""
+    return re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+
+
 def is_boilerplate(text: str) -> bool:
-    return bool(_PROMO.search(text))
+    return bool(_PROMO.search(text)) or bool(_LABELS.match(text.strip("*_ `")))
+
+
+def is_author_bio(text: str, author: str | None) -> bool:
+    """A trailing paragraph that opens with the author's name in the third
+    person (essays are first-person) and reads like a contributor bio."""
+    if not author:
+        return False
+    probe = re.sub(r"[*_`]", "", _flatten_links(text)).strip()
+    probe = re.sub(r"^MODERN LOVE\s*", "", probe, flags=re.I).strip()
+    names = author.split()
+    first, last = re.escape(names[0]), re.escape(names[-1])
+    starts_name = re.match(rf"^{re.escape(author)}\b", probe) or re.match(
+        rf"^{first}\b.{{0,40}}?\b{last}\b", probe)
+    return bool(starts_name and _BIO_VERB.search(probe))
 
 
 # ---- image download -------------------------------------------------------
@@ -116,6 +152,13 @@ def extract_one(slug: str) -> dict | None:
     if body is None:
         return None
 
+    # Delete injection slots before extracting: Dropzones carry "Advertisement"
+    # labels and injected modules; AudioBlocks add a spurious "Listen:" heading.
+    # The essay itself lives in StoryBodyCompanionColumn, never in these.
+    for w in body.select('[data-testid^="Dropzone"], [data-testid^="AudioBlock"], '
+                         '[data-testid^="EmbeddedInteractive"]'):
+        w.decompose()
+
     blocks: list[str] = []
     images: list[tuple[str, str]] = []  # (filename, caption)
     img_n = 0
@@ -128,6 +171,8 @@ def extract_one(slug: str) -> dict | None:
             images.append((fn, ""))
             blocks.append(f"![]({fn})")
 
+    # Modern Love essays are single-flow prose: any h2/h3 in the body is a widget
+    # label, so we emit only paragraphs and figures.
     for el in body.descendants:
         if not isinstance(el, Tag):
             continue
@@ -135,10 +180,6 @@ def extract_one(slug: str) -> dict | None:
             txt = inline(el)
             if txt and not is_boilerplate(txt):
                 blocks.append(txt)
-        elif el.name in ("h2", "h3"):
-            txt = inline(el)
-            if txt:
-                blocks.append(f"## {txt}")
         elif el.name == "figure":
             img = el.find("img")
             src = img.get("src") if img else None
@@ -158,6 +199,13 @@ def extract_one(slug: str) -> dict | None:
     for b in blocks:
         if not clean or clean[-1] != b:
             clean.append(b)
+
+    # Strip trailing contributor-bio / kicker paragraphs off the end.
+    while clean and not clean[-1].startswith(("!", "#")):
+        if is_author_bio(clean[-1], author) or is_boilerplate(clean[-1]):
+            clean.pop()
+        else:
+            break
 
     return {
         "slug": slug, "title": title, "author": author, "date": date,
