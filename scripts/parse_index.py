@@ -18,7 +18,12 @@ import common
 INDEX_URL = "https://ben.koski.us/nyt/modern-love"
 # Sections that are readable essays. `podcasts` are audio episodes (no text).
 KEEP_SECTIONS = {"style", "fashion", "garden"}
-URL_RE = re.compile(r"nytimes\.com/(\d{4})/(\d{2})/(\d{2})/([a-z]+)/([a-z0-9-]+)\.html")
+# Match /YYYY/MM/DD/<section>/[<subsection>/...]<slug>.html. The optional
+# subsection segments catch the 2005-06 era (/fashion/sundaystyles/…), and the
+# slug allows capitals because early URLs used them (14LOVE.html, 14Modern.html)
+# — both were silently dropped before, opening ~7-month gaps in the archive.
+URL_RE = re.compile(
+    r"nytimes\.com/(\d{4})/(\d{2})/(\d{2})/([a-z]+)/(?:[a-z-]+/)*([A-Za-z0-9-]+)\.html")
 
 
 def main() -> int:
@@ -58,14 +63,14 @@ def main() -> int:
                 "url": url,
                 "date": f"{year}-{month}-{day}",
                 "section": section,
-                "slug": f"{year}-{month}-{day}-{slug}"[:80],
+                "slug": f"{year}-{month}-{day}-{slug}".lower()[:80],
                 "image_url": img["src"].split("?")[0] if img else None,
                 "summary": summary.get_text(strip=True) if summary else None,
             }
         )
 
     articles.sort(key=lambda a: (a["date"], a["slug"]))
-    out = common.DATA / "articles.json"
+    out = common.DATA / "articles_raw.json"
     out.write_text(json.dumps(articles, ensure_ascii=False, indent=2), encoding="utf-8")
 
     by_year: dict[str, int] = {}

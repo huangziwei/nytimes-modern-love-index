@@ -27,11 +27,10 @@ def is_alias(slug: str) -> bool:
 
 
 def main() -> int:
+    # articles_raw.json is the pristine full list (parse_index + merge_extra);
+    # this derives the pruned work-list into articles.json.
     raw_path = common.DATA / "articles_raw.json"
     work_path = common.DATA / "articles.json"
-    # Preserve the pristine full list once.
-    if not raw_path.exists():
-        raw_path.write_text(work_path.read_text())
     articles = json.loads(raw_path.read_text())
 
     by_date = collections.defaultdict(list)

@@ -13,14 +13,16 @@ cd "$(dirname "$0")"
 export PLAYWRIGHT_BROWSERS_PATH="$PWD/.pw-browsers"
 PY=.venv/bin/python
 
-$PY scripts/parse_index.py                            # 1. download + parse the index -> articles.json
-$PY scripts/prune_aliases.py                          # 2. drop same-date short-URL aliases (lossless)
-$PY scripts/fetch.py --min-delay 16 --max-delay 28    # 3. polite, resumable crawl (visible browser)
-$PY scripts/extract.py                                # 4. article HTML -> Markdown + images
-$PY scripts/dedup.py                                  # 5. collapse byte-identical duplicate essays
-$PY scripts/rename.py                                 # 6. rename files from headlines (+ URL map)
-$PY scripts/make_cover.py                             # 7. render the cover (downloads CC0 artwork)
-$PY scripts/build_css.py                              # 8. generate the Standard-Ebooks-style stylesheet
-$PY scripts/build_epub.py                             # 9. bind data/modern-love.epub
+$PY scripts/parse_index.py                            #  1. download + parse the index -> articles_raw.json
+$PY scripts/merge_extra.py                            #  2. add recent columns absent from the index
+$PY scripts/prune_aliases.py                          #  3. drop same-date aliases -> articles.json work-list
+$PY scripts/check_gaps.py                             #  4. audit coverage (informational)
+$PY scripts/fetch.py --min-delay 16 --max-delay 28    #  5. polite, resumable crawl (visible browser)
+$PY scripts/extract.py                                #  6. article HTML -> Markdown + images
+$PY scripts/dedup.py                                  #  7. collapse byte-identical duplicate essays
+$PY scripts/rename.py                                 #  8. rename files from headlines (+ URL map)
+$PY scripts/make_cover.py                             #  9. render the cover (downloads CC0 artwork)
+$PY scripts/build_css.py                              # 10. generate the Standard-Ebooks-style stylesheet
+$PY scripts/build_epub.py                             # 11. bind data/modern-love.epub
 
 echo "Done -> data/modern-love.epub"
