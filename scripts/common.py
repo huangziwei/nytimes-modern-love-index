@@ -13,6 +13,7 @@ from __future__ import annotations
 import gzip
 import os
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -31,6 +32,13 @@ FONTS_DIR = DATA / "fonts"
 FONT_WEIGHTS = (400, 700, 900)
 _FONT_URL = ("https://cdn.jsdelivr.net/npm/@fontsource/league-spartan/files/"
              "league-spartan-latin-{w}-normal.woff2")
+
+
+def norm_url(url: str) -> str:
+    """Canonical form of an article URL for dedupe across sources: https, a
+    lowercased host, and the path only (no query, fragment, or trailing slash)."""
+    p = urllib.parse.urlsplit(url.strip())
+    return f"https://{p.netloc.lower()}{p.path.rstrip('/')}"
 
 
 def fetch_url(url: str, timeout: int = 60) -> bytes:

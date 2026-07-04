@@ -1,0 +1,72 @@
+name: Update index
+
+# Keep docs/index.json current by asking the NYT Article Search API for newly
+# published Modern Love columns. Metadata only — no crawl, no login, no browser.
+# See scripts/update_index_api.py.
+
+on:
+  schedule:
+    # GitHub cron is UTC. Modern Love publishes online Friday (ahead of the
+    # Sunday print Styles section), so run Monday morning US time — the column
+    # has been live for days by then. (The updater also looks back 21 days and
+    # dedups, so the exact hour is not load-bearing.) Minute is off the hour to
+    # dodge GitHub's top-of-hour scheduling delays; fixed UTC drifts ~1h with US DST.
+    - cron: "17 12 * * 1"        # Mondays 12:17 UTC = 08:17 ET / 05:17 PT (summer)
+  workflow_dispatch:
+    inputs:
+      probe:
+        description: "Dry run: print API results, write/commit nothing"
+        type: boolean
+        default: false
+      since:
+        description: "Discover columns since this date (YYYY-MM-DD); blank = auto"
+        default: ""
+      fq:
+        description: "Override the NYT filter query; blank = default kicker filter"
+        default: ""
+
+concurrency:
+  group: update-index
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Discover new columns
+        env:
+          NYT_API_KEY: ${{ secrets.NYT_API_KEY }}
+          PROBE: ${{ inputs.probe }}
+          SINCE: ${{ inputs.since }}
+          FQ: ${{ inputs.fq }}
+        run: |
+          if [ -z "$NYT_API_KEY" ]; then
+            echo "::error::NYT_API_KEY secret is not set (Settings -> Secrets and variables -> Actions)."
+            exit 1
+          fi
+          args=()
+          [ "$PROBE" = "true" ] && args+=(--probe)
+          [ -n "$SINCE" ] && args+=(--since "$SINCE")
+          [ -n "$FQ" ] && args+=(--fq "$FQ")
+          python scripts/update_index_api.py "${args[@]}"
+
+      - name: Commit if changed
+        if: ${{ github.event.inputs.probe != 'true' }}
+        run: |
+          git config user.name  "modern-love-index-bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/index.json docs/index.csv
+          if git diff --cached --quiet; then
+            echo "No index changes."
+          else
+            git commit -m "index: API update ($(date -u +%F))"
+            git push
+          fi

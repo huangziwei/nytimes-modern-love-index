@@ -43,23 +43,36 @@ def crawled_meta() -> dict[str, tuple[str | None, str]]:
 
 def main() -> int:
     articles = json.loads((common.DATA / "articles.json").read_text())
-    articles.sort(key=lambda a: (a["date"], a["slug"]))
     meta = crawled_meta()
 
     rows = []
-    for n, a in enumerate(articles, 1):
+    for a in articles:
         title, author = meta.get(a["url"], (None, ""))
         rows.append({
-            "n": n,
             "date": a["date"],
             "title": title or a.get("title") or "",
             "author": author,
             "url": a["url"],
         })
 
+    # Preserve columns discovered via the NYT API (update_index_api.py) that the
+    # local work-list doesn't carry, so rebuilding here never drops them.
     docs = common.ROOT / "docs"
+    index_json = docs / "index.json"
+    have = {common.norm_url(r["url"]) for r in rows}
+    if index_json.exists():
+        for r in json.loads(index_json.read_text(encoding="utf-8")):
+            if common.norm_url(r["url"]) not in have:
+                rows.append({"date": r["date"], "title": r["title"],
+                             "author": r.get("author", ""), "url": r["url"]})
+                have.add(common.norm_url(r["url"]))
+
+    rows.sort(key=lambda r: (r["date"], common.norm_url(r["url"])))
+    rows = [{"n": i, "date": r["date"], "title": r["title"],
+             "author": r["author"], "url": r["url"]} for i, r in enumerate(rows, 1)]
+
     docs.mkdir(exist_ok=True)
-    (docs / "index.json").write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+    index_json.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
     with (docs / "index.csv").open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=["n", "date", "title", "author", "url"])
         w.writeheader()
