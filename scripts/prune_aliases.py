@@ -45,11 +45,13 @@ def main() -> int:
                 if is_alias(a["slug"]):
                     drop.add(a["slug"])
 
-    # Modern Love Podcast episodes carry the column's kicker and were crawled as
-    # if columns, but they're audio, not the written essay — drop them entirely.
-    podcasts = {a["slug"] for a in articles if common.is_nonessay(a["url"], "")}
+    # Podcast episodes, reader roundups, calls for submissions, contest notices
+    # and other non-essays carry the column's kicker but aren't the written
+    # essay — drop them from the work-list entirely.
+    nonessays = {a["slug"] for a in articles
+                 if common.is_nonessay(a["url"], "", a.get("title", ""))}
 
-    remove = drop | podcasts
+    remove = drop | nonessays
     kept = [a for a in articles if a["slug"] not in remove]
     work_path.write_text(json.dumps(kept, ensure_ascii=False, indent=2))
 
@@ -61,11 +63,11 @@ def main() -> int:
                 p.unlink()
                 removed_files += 1
 
-    print(f"pruned {len(drop)} same-date aliases + {len(podcasts)} podcast episodes")
+    print(f"pruned {len(drop)} same-date aliases + {len(nonessays)} non-essays")
     print(f"work-list: {len(articles)} -> {len(kept)} entries")
     print(f"deleted {removed_files} already-fetched files")
-    if podcasts:
-        print("sample podcasts:", sorted(podcasts)[:4])
+    if nonessays:
+        print("sample non-essays:", sorted(nonessays)[:4])
     return 0
 
 

@@ -81,8 +81,8 @@ def normalize(d: dict) -> tuple[dict, str | None]:
     byl = (d.get("byline") or {}).get("original") or ""
     author = byl[3:].strip() if byl[:3].lower() == "by " else byl.strip()
     author = common.fixed_author(url, author)
-    if common.is_nonessay(url, author):
-        return {"title": title}, "podcast"
+    if common.is_nonessay(url, author, title):
+        return {"title": title}, "non-essay"
     return ({"date": (d.get("pub_date") or "")[:10], "title": title,
              "author": author, "url": url}, None)
 
@@ -172,7 +172,8 @@ def main() -> int:
                          "secret, or export it locally for a manual run.")
 
     raw = load_index()
-    existing = [r for r in raw if not common.is_nonessay(r["url"], r.get("author", ""))]
+    existing = [r for r in raw
+                if not common.is_nonessay(r["url"], r.get("author", ""), r.get("title", ""))]
     pruned = len(raw) - len(existing)
     have = {common.norm_url(r["url"]) for r in existing}
     newest = max((r["date"] for r in existing), default="2004-01-01")

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import gzip
 import os
+import re
 import time
 import urllib.parse
 import urllib.request
@@ -89,19 +90,38 @@ BYLINE_FIXES = {
 }
 
 
-def is_nonessay(url: str, author: str) -> bool:
+# Titles of the recurring non-essay features — reader solicitations and their
+# crowdsourced round-ups — matched so *future* ones are caught automatically,
+# without waiting to be added to EXCLUDE_URLS. Deliberately narrow (anchored
+# imperatives / distinctive markers) so it never flags a real personal essay.
+_NONESSAY_TITLE = re.compile(
+    r"^tiny love stories\b"
+    r"|^(tell us|we want|share your|send us|calling all)\b"
+    r"|\bessay contest\b"
+    r"|\bcrowdsourced\b"
+    r"|^your \d+[- ]",
+    re.I,
+)
+
+
+def is_nonessay(url: str, author: str, title: str = "") -> bool:
     """True for Modern Love *adjacent* content (the podcast, reader roundups,
-    contest notices) rather than the written column, judged from the stored URL
-    and byline alone so the check works at discovery and when re-validating an
-    index row."""
+    contest notices, calls for submissions) rather than the written column.
+    Judged from the URL, byline, and title, so the check works at discovery,
+    when re-validating an index row, and on future columns the curated
+    EXCLUDE_URLS list hasn't seen yet."""
     u = (url or "").lower()
     author = (author or "").strip()
+    al = author.lower()
+    title = (title or "").strip()
     return (
         norm_url(url or "") in EXCLUDE_URLS
         or "/podcasts/" in u
         or "modern-love-podcast" in u
-        or "podcast" in author.lower()
+        or "podcast" in al
+        or "new york times" in al            # institutional byline (roundups, calls)
         or author in PODCAST_BYLINES
+        or bool(title and _NONESSAY_TITLE.search(title))
     )
 
 

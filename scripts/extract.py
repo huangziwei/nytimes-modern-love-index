@@ -283,7 +283,8 @@ def main() -> int:
     # Skip Modern Love Podcast episodes crawled as if they were columns (audio,
     # not the written essay). Fall back to the slug when the URL isn't in INDEX.
     kept = [s for s in slugs
-            if not common.is_nonessay(INDEX.get(s, {}).get("url") or s, "")]
+            if not common.is_nonessay(INDEX.get(s, {}).get("url") or s, "",
+                                      INDEX.get(s, {}).get("title", ""))]
     if len(kept) < len(slugs):
         print(f"skipping {len(slugs) - len(kept)} podcast/non-essay pages")
     slugs = kept

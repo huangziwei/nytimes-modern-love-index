@@ -66,7 +66,7 @@ def main() -> int:
             # Preserve only real, API-sourced rows (which always carry a byline);
             # never a stale/dedup-dropped row that lost its markdown.
             if (u in have or not r.get("author")
-                    or common.is_nonessay(r["url"], r.get("author", ""))):
+                    or common.is_nonessay(r["url"], r["author"], r.get("title", ""))):
                 continue
             rows.append({"date": r["date"], "title": r["title"],
                          "author": r.get("author", ""), "url": r["url"]})
@@ -74,7 +74,8 @@ def main() -> int:
 
     # Exclude Modern Love Podcast episodes (and other non-essay rows) from the
     # public index, whether they arrived via the crawl or a prior API run.
-    rows = [r for r in rows if not common.is_nonessay(r["url"], r.get("author", ""))]
+    rows = [r for r in rows
+            if not common.is_nonessay(r["url"], r["author"], r.get("title", ""))]
     for r in rows:
         r["author"] = r["author"] or common.fixed_author(r["url"])
 
