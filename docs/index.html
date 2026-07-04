@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Modern Love — Column Index</title>
+<title>NYTimes Modern Love Index</title>
 <meta name="description" content="A searchable index of every New York Times Modern Love column, 2004–2026.">
 <style>
   *{box-sizing:border-box}
@@ -28,6 +28,9 @@
   mark{background:#000;color:#fff}
   .pending{color:#888}
   footer{margin-top:1.25rem;font-size:.8rem;line-height:1.6}
+  footer p{margin:0}
+  .nyt-attr{display:inline-block;margin-top:1rem}
+  .nyt-attr img{display:block;height:28px;width:auto}
 
   /* Mobile: collapse each row into a stacked block (title, then date · author). */
   @media (max-width:768px){
@@ -62,7 +65,10 @@
     <tbody id="rows"></tbody>
   </table>
 
-  <footer id="foot"></footer>
+  <footer>
+    <p id="foot"></p>
+    <a class="nyt-attr" href="https://developer.nytimes.com" target="_blank" rel="noopener"><img src="poweredby-nyt.png" alt="Data provided by The New York Times"></a>
+  </footer>
 </main>
 
 <script>

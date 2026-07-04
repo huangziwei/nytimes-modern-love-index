@@ -63,7 +63,10 @@ def main() -> int:
     if index_json.exists():
         for r in json.loads(index_json.read_text(encoding="utf-8")):
             u = common.norm_url(r["url"])
-            if u in have or common.is_nonessay(r["url"], r.get("author", "")):
+            # Preserve only real, API-sourced rows (which always carry a byline);
+            # never a stale/dedup-dropped row that lost its markdown.
+            if (u in have or not r.get("author")
+                    or common.is_nonessay(r["url"], r.get("author", ""))):
                 continue
             rows.append({"date": r["date"], "title": r["title"],
                          "author": r.get("author", ""), "url": r["url"]})

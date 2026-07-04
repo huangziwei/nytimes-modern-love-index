@@ -56,6 +56,15 @@ def main() -> int:
             (common.MD_DIR / f"{s}.md").unlink(missing_ok=True)
             dropped.append(s)
 
+    # Drop the collapsed aliases from the work-list too, so build_index never
+    # lists them as bylineless rows once their markdown is gone.
+    work = common.DATA / "articles.json"
+    if dropped and work.exists():
+        drop = set(dropped)
+        arts = json.loads(work.read_text())
+        work.write_text(json.dumps([a for a in arts if a["slug"] not in drop],
+                                    ensure_ascii=False, indent=2))
+
     (common.DATA / "duplicates.json").write_text(json.dumps(report, indent=2))
     print(f"{len(files)} files -> {len(groups)} unique essays "
           f"({len(dropped)} alias copies removed)")
