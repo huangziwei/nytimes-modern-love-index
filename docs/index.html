@@ -116,10 +116,8 @@ Promise.resolve(DATA).then(d => {
   if (rows.length){
     document.getElementById("span").textContent =
       `${rows[0].date.slice(0,4)}–${rows[rows.length-1].date.slice(0,4)}`;
-    const known = rows.filter(r=>r.author).length;
     document.getElementById("foot").innerHTML =
       `Titles link to nytimes.com; a subscription is required to read. ` +
-      `${known.toLocaleString()} of ${rows.length.toLocaleString()} bylines recorded. ` +
       `Bibliographic data only &mdash; columns &copy; The New York Times and its authors.`;
   }
   render();

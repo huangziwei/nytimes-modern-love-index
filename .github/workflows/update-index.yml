@@ -18,6 +18,10 @@ on:
         description: "Dry run: print API results, write/commit nothing"
         type: boolean
         default: false
+      all:
+        description: "Reconcile: scan the whole archive year by year"
+        type: boolean
+        default: false
       since:
         description: "Discover columns since this date (YYYY-MM-DD); blank = auto"
         default: ""
@@ -45,6 +49,7 @@ jobs:
         env:
           NYT_API_KEY: ${{ secrets.NYT_API_KEY }}
           PROBE: ${{ inputs.probe }}
+          ALL: ${{ inputs.all }}
           SINCE: ${{ inputs.since }}
           FQ: ${{ inputs.fq }}
         run: |
@@ -54,6 +59,7 @@ jobs:
           fi
           args=()
           [ "$PROBE" = "true" ] && args+=(--probe)
+          [ "$ALL" = "true" ] && args+=(--all)
           [ -n "$SINCE" ] && args+=(--since "$SINCE")
           [ -n "$FQ" ] && args+=(--fq "$FQ")
           python scripts/update_index_api.py "${args[@]}"
