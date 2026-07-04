@@ -40,8 +40,8 @@ API = "https://api.nytimes.com/svc/search/v2/articlesearch.json"
 # of the Style desk; the post-filters below drop sibling features that share it.
 DEFAULT_FQ = 'kicker:"Modern Love"'
 SKIP_MATERIAL = {"Interactive Feature", "Audio", "Video", "Slideshow", "Quiz"}
+SKIP_DOCTYPE = {"audio", "multimedia"}
 SKIP_TITLE_PREFIXES = ("Tiny Love Stories",)
-SKIP_TITLE_SUBSTR = ("Modern Love Podcast", "Podcast:")
 
 
 def api_get(params: dict, key: str) -> dict:
@@ -64,23 +64,38 @@ def api_get(params: dict, key: str) -> dict:
 
 
 def normalize(d: dict) -> tuple[dict, str | None]:
-    """Turn an API doc into an index row, or flag why it isn't a weekly essay."""
+    """Turn an API doc into an index row, or flag why it isn't a written column."""
     hl = d.get("headline") or {}
     title = (hl.get("main") or "").strip()
     url = d.get("web_url") or ""
-    material = d.get("type_of_material") or ""
     if not url:
         return {"title": title}, "no-url"
-    if material in SKIP_MATERIAL:
-        return {"title": title}, f"material:{material}"
+    material = d.get("type_of_material") or ""
+    doctype = d.get("document_type") or ""
+    if material in SKIP_MATERIAL or doctype in SKIP_DOCTYPE:
+        return {"title": title}, f"type:{doctype or material}"
+    if (d.get("section_name") or "") == "Podcasts":
+        return {"title": title}, "section:Podcasts"
     if title.startswith(SKIP_TITLE_PREFIXES):
         return {"title": title}, "tiny-love-stories"
-    if any(s in title for s in SKIP_TITLE_SUBSTR):
-        return {"title": title}, "podcast"
     byl = (d.get("byline") or {}).get("original") or ""
     author = byl[3:].strip() if byl[:3].lower() == "by " else byl.strip()
+    if common.is_nonessay(url, author):
+        return {"title": title}, "podcast"
     return ({"date": (d.get("pub_date") or "")[:10], "title": title,
              "author": author, "url": url}, None)
+
+
+def _dump(d: dict, reason: str | None) -> None:
+    """One-doc diagnostic line (probe mode) exposing the fields we filter on."""
+    hl = d.get("headline") or {}
+    byl = (d.get("byline") or {}).get("original") or ""
+    path = urllib.parse.urlsplit(d.get("web_url") or "").path
+    tag = "keep" if not reason else f"skip:{reason}"
+    print(f"    [{tag}] {(d.get('pub_date') or '')[:10]} "
+          f"dt={d.get('document_type')!r} tm={d.get('type_of_material')!r} "
+          f"sec={d.get('section_name')!r} by={byl!r}")
+    print(f"        {path} | {hl.get('main')!r}")
 
 
 def discover(key: str, fq: str, begin: str, end: str | None, probe: bool) -> list[dict]:
@@ -96,27 +111,19 @@ def discover(key: str, fq: str, begin: str, end: str | None, probe: bool) -> lis
         docs = resp.get("docs") or []
         if page == 0:
             hits = (resp.get("meta") or {}).get("hits")
-            print(f"  fq={fq!r} {begin}..{end or 'now'} -> hits={hits}")
-            if probe:
-                for d in docs[:3]:
-                    hl = d.get("headline") or {}
-                    print(
-                        f"    e.g. kicker={hl.get('kicker')!r} "
-                        f"desk={d.get('news_desk')!r} "
-                        f"section={d.get('section_name')!r} "
-                        f"material={d.get('type_of_material')!r}"
-                    )
-                    print(f"         title={hl.get('main')!r}")
+            print(f"  fq={fq!r} {begin}..{end or 'now'} -> hits={hits}, docs/page={len(docs)}")
         if not docs:
             break
         for d in docs:
             row, reason = normalize(d)
+            if probe:
+                _dump(d, reason)
             if reason:
                 skips.append(reason)
             else:
                 kept[common.norm_url(row["url"])] = row
         page += 1
-        time.sleep(6)  # stay well under 5 requests/minute
+        time.sleep(12)  # <= 5 requests/minute
     if probe and skips:
         for reason, n in Counter(skips).most_common():
             print(f"    skipped[{reason}] = {n}")
@@ -163,10 +170,13 @@ def main() -> int:
         raise SystemExit("NYT_API_KEY is not set — add it as a GitHub Actions "
                          "secret, or export it locally for a manual run.")
 
-    existing = load_index()
+    raw = load_index()
+    existing = [r for r in raw if not common.is_nonessay(r["url"], r.get("author", ""))]
+    pruned = len(raw) - len(existing)
     have = {common.norm_url(r["url"]) for r in existing}
     newest = max((r["date"] for r in existing), default="2004-01-01")
-    print(f"index: {len(existing)} columns, newest {newest}")
+    print(f"index: {len(existing)} columns, newest {newest}"
+          + (f" (pruning {pruned} non-essay rows)" if pruned else ""))
 
     if args.all:
         found_map: dict[str, dict] = {}
@@ -190,12 +200,13 @@ def main() -> int:
     if args.probe:
         print("[probe] nothing written.")
         return 0
-    if not fresh:
+    if not fresh and not pruned:
         print("already up to date.")
         return 0
     write_index(existing + fresh)
     total = len(existing) + len(fresh)
-    print(f"wrote {INDEX_JSON.relative_to(common.ROOT)} (+{len(fresh)} = {total}).")
+    note = f"+{len(fresh)}" + (f", -{pruned}" if pruned else "")
+    print(f"wrote {INDEX_JSON.relative_to(common.ROOT)} ({note} = {total}).")
     return 0
 
 

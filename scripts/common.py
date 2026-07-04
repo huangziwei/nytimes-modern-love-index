@@ -41,6 +41,23 @@ def norm_url(url: str) -> str:
     return f"https://{p.netloc.lower()}{p.path.rstrip('/')}"
 
 
+# The Modern Love Podcast shares the column's "Modern Love" kicker but is not the
+# written essay. These host/producer bylines never appear on the column itself.
+PODCAST_BYLINES = {"Anna Martin"}
+
+
+def is_nonessay(url: str, author: str) -> bool:
+    """True for Modern Love *adjacent* content (chiefly the podcast) rather than
+    the written column, judged from the stored URL and byline alone so the check
+    works both at discovery and when re-validating a row already in the index."""
+    author = (author or "").strip()
+    return (
+        "/podcasts/" in (url or "").lower()
+        or "podcast" in author.lower()
+        or author in PODCAST_BYLINES
+    )
+
+
 def fetch_url(url: str, timeout: int = 60) -> bytes:
     """GET a URL, transparently handling gzip (used for assets, not NYT)."""
     req = urllib.request.Request(

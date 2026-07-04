@@ -62,10 +62,12 @@ def main() -> int:
     have = {common.norm_url(r["url"]) for r in rows}
     if index_json.exists():
         for r in json.loads(index_json.read_text(encoding="utf-8")):
-            if common.norm_url(r["url"]) not in have:
-                rows.append({"date": r["date"], "title": r["title"],
-                             "author": r.get("author", ""), "url": r["url"]})
-                have.add(common.norm_url(r["url"]))
+            u = common.norm_url(r["url"])
+            if u in have or common.is_nonessay(r["url"], r.get("author", "")):
+                continue
+            rows.append({"date": r["date"], "title": r["title"],
+                         "author": r.get("author", ""), "url": r["url"]})
+            have.add(u)
 
     rows.sort(key=lambda r: (r["date"], common.norm_url(r["url"])))
     rows = [{"n": i, "date": r["date"], "title": r["title"],
