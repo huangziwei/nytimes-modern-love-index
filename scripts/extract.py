@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import struct
 import sys
 import urllib.request
 from pathlib import Path
@@ -96,28 +97,133 @@ def is_author_bio(text: str, author: str | None) -> bool:
 
 # ---- image download -------------------------------------------------------
 
+# NYT serves every master image in a family of named renditions. The article
+# index and NYT's lazy `<img src>` usually point at a ~190px *square* thumbnail
+# (`filmstrip`, `thumbWide`, `thumbStandard`); the full-resolution master is
+# `superJumbo` (long side up to 2048px), with `jumbo`/`articleLarge` as smaller
+# fallbacks. Each rendition is versioned independently, so `foo-filmstrip-v3`
+# can pair with `foo-superJumbo-v2` — or an unversioned `foo-superJumbo` — which
+# is why we probe a short list of version suffixes per rendition.
+_REND_RE = re.compile(
+    r"-(?:superJumbo|jumbo|master\d+|articleLarge|articleInline|thumbWide"
+    r"|thumbStandard|thumbLarge|filmstrip|mediumThreeByTwo\d+|mediumSquare\d+"
+    r"|square\d+|blog\d+|popup|sfSpan|hpMedium|hpLarge|moth|videoLarge|slide"
+    r"|xlarge|inline)(-v\d+)?(\.\w+)$"
+)
+
+# Long side (px) at or above which a file is already a full-res rendition, so a
+# re-run can skip re-downloading it.
+_HI_RES_MIN = 1000
+
+
+def _dims(data: bytes) -> tuple[int, int] | None:
+    """(width, height) read from a JPEG or PNG header, or None if unparsable."""
+    if data[:2] == b"\xff\xd8":                       # JPEG: scan to a frame header
+        i, n = 2, len(data)
+        while i + 9 < n:
+            if data[i] != 0xFF:
+                i += 1
+                continue
+            marker = data[i + 1]
+            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                h, w = struct.unpack(">HH", data[i + 5:i + 9])
+                return w, h
+            i += 2 + struct.unpack(">H", data[i + 2:i + 4])[0]
+        return None
+    if data[:8] == b"\x89PNG\r\n\x1a\n":              # PNG: IHDR sits at a fixed offset
+        w, h = struct.unpack(">II", data[16:24])
+        return w, h
+    return None
+
+
+def _download(url: str) -> bytes | None:
+    """GET an image URL; return its bytes only if it's a real, non-trivial image
+    (a 404 hands back an HTML error page, which this rejects)."""
+    try:
+        req = urllib.request.Request(url, headers=UA)
+        with urllib.request.urlopen(req, timeout=30) as r:
+            if r.headers.get_content_maintype() != "image":
+                return None
+            data = r.read()
+    except Exception:  # noqa: BLE001
+        return None
+    return data if len(data) > 3000 and _dims(data) else None
+
+
+def _hi_res_candidates(url: str) -> list[str]:
+    """Higher-resolution variants of an NYT image URL, largest first.
+
+    Empty when the URL carries no recognizable rendition token (very old
+    flat-style paths like `.../04love190.1.jpg`, which have no larger master)."""
+    base = url.split("?")[0]
+    m = _REND_RE.search(base)
+    if not m:
+        return []
+    ver, ext = m.group(1) or "", m.group(2)
+    out, seen = [], set()
+    for rend in ("superJumbo", "jumbo", "articleLarge"):
+        for v in (ver, "", "-v2", "-v3", "-v4"):
+            cand = _REND_RE.sub(f"-{rend}{v}{ext}", base)
+            if cand not in seen:
+                seen.add(cand)
+                out.append(cand)
+    return out
+
+
+def img_identity(url: str) -> str:
+    """Rendition-independent key for an NYT image, so the same illustration
+    reaching us as both the index thumbnail and an in-body figure de-dupes to a
+    single download."""
+    parts = url.split("?")[0].rstrip("/").split("/")
+    stem = _REND_RE.sub("", parts[-1])
+    stem = re.sub(r"\.(jpg|jpeg|png|webp|gif)$", "", stem, flags=re.I)
+    parent = parts[-2] if len(parts) >= 2 else ""
+    return f"{parent}/{stem}"
+
+
+def figure_src(fig: Tag) -> str | None:
+    """Best image URL inside a <figure>: the widest `srcset` entry across its
+    <img>/<source> tags (NYT lazy-loads the real image there), else `<img src>`.
+    None for figures carrying no image, e.g. the audio player on recent essays."""
+    best_url, best_w = None, -1
+    for tag in fig.find_all(("img", "source")):
+        for part in (tag.get("srcset") or "").split(","):
+            bits = part.split()
+            if not bits:
+                continue
+            w = (int(bits[1][:-1]) if len(bits) > 1
+                 and bits[1].endswith("w") and bits[1][:-1].isdigit() else 0)
+            if w > best_w:
+                best_url, best_w = bits[0], w
+    if best_url:
+        return best_url
+    img = fig.find("img")
+    return (img.get("src") or None) if img else None
+
+
 def fetch_image(url: str, slug: str, n: int) -> str | None:
-    """Download one image; return its local filename (or None on failure)."""
+    """Download one image at the best resolution NYT offers; return its local
+    filename (or None on failure).
+
+    We try the `superJumbo`/`jumbo` renditions ahead of the URL as given, so the
+    index's square thumbnails are replaced by the full-size master."""
     if not url:
         return None
-    url = url.split("?")[0]
-    ext = Path(url).suffix.lower() or ".jpg"
+    ext = Path(url.split("?")[0]).suffix.lower()
     if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp"):
         ext = ".jpg"
     name = f"{slug}-{n}{ext}"
     dest = common.IMG_DIR / name
-    if dest.exists() and dest.stat().st_size > 1000:
-        return name
-    try:
-        req = urllib.request.Request(url, headers=UA)
-        with urllib.request.urlopen(req, timeout=30) as r:
-            data = r.read()
-        if len(data) < 1000:
-            return None
-        dest.write_bytes(data)
-        return name
-    except Exception:  # noqa: BLE001
-        return None
+    if dest.exists():
+        d = _dims(dest.read_bytes())
+        if d and max(d) >= _HI_RES_MIN:
+            return name
+    for cand in _hi_res_candidates(url) + [url.split("?")[0]]:
+        data = _download(cand)
+        if data:
+            dest.write_bytes(data)
+            return name
+    return None
 
 
 # ---- inline markdown ------------------------------------------------------
@@ -197,15 +303,37 @@ def extract_one(slug: str) -> dict | None:
 
     blocks: list[str] = []
     images: list[tuple[str, str]] = []  # (filename, caption)
+    seen_imgs: set[str] = set()
     img_n = 0
 
-    # Lead image from the index (highest-quality known URL).
-    if idx.get("image_url"):
+    def add_image(url: str | None, cap: str = "") -> None:
+        """Fetch `url` at full resolution and emit its markdown, skipping any
+        illustration already pulled in (the index thumbnail and a body figure
+        often point at the same master)."""
+        nonlocal img_n
+        if not url or img_identity(url) in seen_imgs:
+            return
+        fn = fetch_image(url, slug, img_n + 1)
+        if not fn:
+            return
         img_n += 1
-        fn = fetch_image(idx["image_url"], slug, img_n)
-        if fn:
-            images.append((fn, ""))
-            blocks.append(f"![]({fn})")
+        seen_imgs.add(img_identity(url))
+        images.append((fn, cap))
+        blocks.append(f"![{cap}]({fn})")
+        if cap:
+            blocks.append(f"*{cap}*")
+
+    # Lead illustration. NYT's real full-res art is a <figure aria-label="media">
+    # whose <img> srcset carries the superJumbo master — in the header on recent
+    # essays, but inside the body on some 2012-2019 ones. The index only knows a
+    # master-less section thumbnail, so fall back to it only when no media figure
+    # exists. A body media figure used as the lead is skipped in the walk below.
+    art = soup.find("article") or soup
+    lead_fig = art.select_one('figure[aria-label="media"]')
+    if lead_fig is not None:
+        add_image(figure_src(lead_fig), clean_caption(lead_fig.find("figcaption")))
+    else:
+        add_image(idx.get("image_url"))
 
     # Modern Love essays are single-flow prose: any h2/h3 in the body is a widget
     # label, so we emit only paragraphs and figures.
@@ -217,17 +345,9 @@ def extract_one(slug: str) -> dict | None:
             if txt and not is_boilerplate(txt):
                 blocks.append(txt)
         elif el.name == "figure":
-            img = el.find("img")
-            src = img.get("src") if img else None
-            if src:
-                img_n += 1
-                fn = fetch_image(src, slug, img_n)
-                cap = clean_caption(el.find("figcaption"))
-                if fn:
-                    images.append((fn, cap))
-                    blocks.append(f"![{cap}]({fn})")
-                    if cap:
-                        blocks.append(f"*{cap}*")
+            if el is lead_fig:                    # already emitted as the lead
+                continue
+            add_image(figure_src(el), clean_caption(el.find("figcaption")))
 
     # De-dupe consecutive repeats that the descendants walk can introduce.
     clean: list[str] = []
@@ -279,7 +399,12 @@ def to_markdown(rec: dict) -> str:
 def main() -> int:
     common.MD_DIR.mkdir(parents=True, exist_ok=True)
     common.IMG_DIR.mkdir(parents=True, exist_ok=True)
-    slugs = sys.argv[1:] or sorted(p.stem for p in common.HTML_DIR.glob("*.html"))
+    # Follow the canonical index (articles.json), not the raw HTML dir: the crawl
+    # leaves behind alias pages — the same essay at a second URL, sometimes with
+    # different copyediting that dedup's exact-text match won't catch — so walking
+    # every *.html would re-introduce duplicates. Indexed slugs stay 1:1 with the
+    # published index.
+    slugs = sys.argv[1:] or sorted(INDEX)
     # Skip Modern Love Podcast episodes crawled as if they were columns (audio,
     # not the written essay). Fall back to the slug when the URL isn't in INDEX.
     kept = [s for s in slugs

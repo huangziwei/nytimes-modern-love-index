@@ -32,6 +32,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("slugs", nargs="*", help="specific slugs (default: all)")
     ap.add_argument("--out", default="modern-love.epub")
+    ap.add_argument("--images", default=str(common.IMG_DIR),
+                    help="directory of images to embed (default: data/images). "
+                         "Point at a device-optimized set, e.g. data/images_epub.")
     args = ap.parse_args()
 
     if args.slugs:
@@ -53,7 +56,7 @@ def main() -> int:
         "--to=epub3",
         "--toc", "--toc-depth=1",
         "--split-level=1",
-        f"--resource-path={common.IMG_DIR}",
+        f"--resource-path={args.images}",
         "--metadata-file", str(meta_path),
         "-o", str(out),
     ]
