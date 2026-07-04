@@ -21,8 +21,9 @@ $PY scripts/fetch.py --min-delay 16 --max-delay 28    #  5. polite, resumable cr
 $PY scripts/extract.py                                #  6. article HTML -> Markdown + images
 $PY scripts/dedup.py                                  #  7. collapse byte-identical duplicate essays
 $PY scripts/rename.py                                 #  8. rename files from headlines (+ URL map)
-$PY scripts/make_cover.py                             #  9. render the cover (downloads CC0 artwork)
-$PY scripts/build_css.py                              # 10. generate the Standard-Ebooks-style stylesheet
-$PY scripts/build_epub.py                             # 11. bind data/modern-love.epub
+$PY scripts/build_index.py                            #  9. regenerate the public index -> docs/
+$PY scripts/make_cover.py                             # 10. render the cover (downloads CC0 artwork)
+$PY scripts/build_css.py                              # 11. generate the Standard-Ebooks-style stylesheet
+$PY scripts/build_epub.py                             # 12. bind data/modern-love.epub
 
 echo "Done -> data/modern-love.epub"
