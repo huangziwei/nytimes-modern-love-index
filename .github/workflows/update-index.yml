@@ -14,7 +14,7 @@ on:
     - cron: "17 12 * * 1"        # Mondays 12:17 UTC = 08:17 ET / 05:17 PT (summer)
   workflow_dispatch:
     inputs:
-      probe:
+      dry_run:
         description: "Dry run: print API results, write/commit nothing"
         type: boolean
         default: false
@@ -48,7 +48,7 @@ jobs:
       - name: Discover new columns
         env:
           NYT_API_KEY: ${{ secrets.NYT_API_KEY }}
-          PROBE: ${{ inputs.probe }}
+          DRY_RUN: ${{ inputs.dry_run }}
           ALL: ${{ inputs.all }}
           SINCE: ${{ inputs.since }}
           FQ: ${{ inputs.fq }}
@@ -58,14 +58,14 @@ jobs:
             exit 1
           fi
           args=()
-          [ "$PROBE" = "true" ] && args+=(--probe)
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           [ "$ALL" = "true" ] && args+=(--all)
           [ -n "$SINCE" ] && args+=(--since "$SINCE")
           [ -n "$FQ" ] && args+=(--fq "$FQ")
           python scripts/update_index_api.py "${args[@]}"
 
       - name: Commit if changed
-        if: ${{ github.event.inputs.probe != 'true' }}
+        if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |
           git config user.name  "modern-love-index-bot"
           git config user.email "github-actions[bot]@users.noreply.github.com"

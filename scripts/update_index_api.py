@@ -10,8 +10,8 @@ It works purely off committed files — it reads and rewrites docs/index.json an
 never touches the gitignored crawl in data/ — so it is safe to run in CI (see
 .github/workflows/update-index.yml) on a weekly schedule.
 
-The key is read from NYT_API_KEY (a GitHub Actions secret in CI). Use --probe to
-print what the API returns while writing nothing; --fq lets you try different
+The key is read from NYT_API_KEY (a GitHub Actions secret in CI). Use --dry-run
+to print what the API returns while writing nothing; --fq lets you try different
 filters from the logs while proving out the Modern Love query.
 """
 
@@ -87,7 +87,7 @@ def normalize(d: dict) -> tuple[dict, str | None]:
 
 
 def _dump(d: dict, reason: str | None) -> None:
-    """One-doc diagnostic line (probe mode) exposing the fields we filter on."""
+    """One-doc diagnostic line (dry-run mode) exposing the fields we filter on."""
     hl = d.get("headline") or {}
     byl = (d.get("byline") or {}).get("original") or ""
     path = urllib.parse.urlsplit(d.get("web_url") or "").path
@@ -98,7 +98,7 @@ def _dump(d: dict, reason: str | None) -> None:
     print(f"        {path} | {hl.get('main')!r}")
 
 
-def discover(key: str, fq: str, begin: str, end: str | None, probe: bool) -> list[dict]:
+def discover(key: str, fq: str, begin: str, end: str | None, dry_run: bool) -> list[dict]:
     """Normalized Modern Love rows in [begin, end], paging until the docs run out."""
     kept: dict[str, dict] = {}
     skips: list[str] = []
@@ -116,7 +116,7 @@ def discover(key: str, fq: str, begin: str, end: str | None, probe: bool) -> lis
             break
         for d in docs:
             row, reason = normalize(d)
-            if probe:
+            if dry_run:
                 _dump(d, reason)
             if reason:
                 skips.append(reason)
@@ -124,7 +124,7 @@ def discover(key: str, fq: str, begin: str, end: str | None, probe: bool) -> lis
                 kept[common.norm_url(row["url"])] = row
         page += 1
         time.sleep(12)  # <= 5 requests/minute
-    if probe and skips:
+    if dry_run and skips:
         for reason, n in Counter(skips).most_common():
             print(f"    skipped[{reason}] = {n}")
     return list(kept.values())
@@ -154,7 +154,7 @@ def main() -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument("--probe", action="store_true",
+    ap.add_argument("--dry-run", action="store_true",
                     help="print what the API returns; write and commit nothing")
     ap.add_argument("--since", metavar="YYYY-MM-DD",
                     help="discover columns published on/after this date "
@@ -181,7 +181,7 @@ def main() -> int:
     if args.all:
         found_map: dict[str, dict] = {}
         for year in range(2004, dt.date.today().year + 1):
-            for r in discover(key, args.fq, f"{year}0101", f"{year}1231", args.probe):
+            for r in discover(key, args.fq, f"{year}0101", f"{year}1231", args.dry_run):
                 found_map[common.norm_url(r["url"])] = r
         found = list(found_map.values())
     else:
@@ -190,15 +190,15 @@ def main() -> int:
         else:
             since = dt.date.fromisoformat(newest) - dt.timedelta(days=21)
             begin = since.strftime("%Y%m%d")
-        found = discover(key, args.fq, begin, None, args.probe)
+        found = discover(key, args.fq, begin, None, args.dry_run)
 
     fresh = [r for r in found if common.norm_url(r["url"]) not in have]
     print(f"API returned {len(found)} Modern Love columns, {len(fresh)} new:")
     for r in sorted(fresh, key=lambda r: r["date"]):
         print(f"  + {r['date']}  {r['title'][:56]:58}  {r['author']}")
 
-    if args.probe:
-        print("[probe] nothing written.")
+    if args.dry_run:
+        print("[dry-run] nothing written.")
         return 0
     if not fresh and not pruned:
         print("already up to date.")
