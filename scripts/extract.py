@@ -279,6 +279,13 @@ def main() -> int:
     common.MD_DIR.mkdir(parents=True, exist_ok=True)
     common.IMG_DIR.mkdir(parents=True, exist_ok=True)
     slugs = sys.argv[1:] or sorted(p.stem for p in common.HTML_DIR.glob("*.html"))
+    # Skip Modern Love Podcast episodes crawled as if they were columns (audio,
+    # not the written essay). Fall back to the slug when the URL isn't in INDEX.
+    kept = [s for s in slugs
+            if not common.is_nonessay(INDEX.get(s, {}).get("url") or s, "")]
+    if len(kept) < len(slugs):
+        print(f"skipping {len(slugs) - len(kept)} podcast/non-essay pages")
+    slugs = kept
 
     ok = skipped = 0
     for slug in slugs:
