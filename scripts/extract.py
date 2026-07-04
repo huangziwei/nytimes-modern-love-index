@@ -178,6 +178,7 @@ def extract_one(slug: str) -> dict | None:
         soup, property="og:title") or idx.get("title") or slug
     byl = meta(soup, name="byl")
     author = (byl or "").removeprefix("By ").strip() or None
+    author = author or common.fixed_author(idx.get("url", "")) or None
     # Prefer the index/URL date (original publication) over the page's
     # published_time, which reprints overwrite with the re-publish date.
     published = meta(soup, property="article:published_time")

@@ -80,6 +80,7 @@ def normalize(d: dict) -> tuple[dict, str | None]:
         return {"title": title}, "tiny-love-stories"
     byl = (d.get("byline") or {}).get("original") or ""
     author = byl[3:].strip() if byl[:3].lower() == "by " else byl.strip()
+    author = common.fixed_author(url, author)
     if common.is_nonessay(url, author):
         return {"title": title}, "podcast"
     return ({"date": (d.get("pub_date") or "")[:10], "title": title,

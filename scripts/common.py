@@ -45,19 +45,70 @@ def norm_url(url: str) -> str:
 # written essay. These host/producer bylines never appear on the column itself.
 PODCAST_BYLINES = {"Anna Martin"}
 
+# Curated non-essays that carry the column's kicker but aren't the written essay
+# and evade the podcast rule: reader-story roundups, contest announcements and
+# calls for submissions, and interactive companions. Keyed by canonical URL.
+EXCLUDE_URLS = {
+    norm_url(u) for u in (
+        # Not the weekly essay: reader-story roundups, contest notices, calls
+        # for submissions, interactive companions, editorial/anniversary
+        # features, and the 20th-anniversary "classic" reprints (dupes of the
+        # originals, which are kept under their original dates).
+        "https://www.nytimes.com/2014/12/21/style/the-10-best-modern-love-columns-ever.html",
+        "https://www.nytimes.com/2015/01/09/style/no-37-big-wedding-or-small.html",
+        "https://www.nytimes.com/2015/02/13/style/the-36-questions-on-the-way-to-love.html",
+        "https://www.nytimes.com/2017/11/10/style/modern-love-13-word-stories.html",
+        "https://www.nytimes.com/2018/06/01/style/modern-love-13-word-stories.html",
+        "https://www.nytimes.com/2019/02/15/style/modern-love-college-essay-contest.html",
+        "https://www.nytimes.com/2020/06/12/style/modern-love-coronavirus-living-together.html",
+        "https://www.nytimes.com/2022/02/11/style/what-is-black-love-today.html",
+        "https://www.nytimes.com/2022/11/10/style/modern-love-tell-us-about-a-moment-of-regrettable-rage.html",
+        "https://www.nytimes.com/2022/12/17/style/rage-regret-relationships.html",
+        "https://www.nytimes.com/2023/12/11/style/modern-love-money-questions-partners.html",
+        "https://www.nytimes.com/2024/02/21/style/modern-love-messages-screenshots.html",
+        "https://www.nytimes.com/2024/10/11/style/modern-love-7-lessons.html",
+        "https://www.nytimes.com/2024/10/11/style/modern-love-classic-my-body-doesnt-belong-to-you.html",
+        "https://www.nytimes.com/2024/10/11/style/modern-love-essays-readers-stories.html",
+        "https://www.nytimes.com/2024/10/11/style/modern-love-letters-younger-self.html",
+        "https://www.nytimes.com/2024/10/11/style/modern-love-origin.html",
+        "https://www.nytimes.com/2024/10/18/style/modern-love-classic-learning-to-measure-time-in-love-and-loss.html",
+        "https://www.nytimes.com/2024/10/25/style/modern-love-classic-sometimes-its-not-you-or-the-math.html",
+        "https://www.nytimes.com/2024/11/01/style/modern-love-classic-when-eve-and-eve-bit-the-apple.html",
+        "https://www.nytimes.com/2025/06/26/style/same-sex-marriage-supreme-court.html",
+        "https://www.nytimes.com/2025/09/18/style/modern-love-we-want-your-best-breakup-lines.html",
+        "https://www.nytimes.com/2026/01/21/style/modern-love-what-are-your-dating-rules.html",
+        "https://www.nytimes.com/2026/02/12/style/modern-dating-rules.html",
+    )
+}
+
+# Bylines the paper omitted from the column itself and later ran as a correction.
+# Keyed by canonical URL.
+BYLINE_FIXES = {
+    norm_url("https://www.nytimes.com/2005/11/13/fashion/sundaystyles/"
+             "i-seemed-plucky-and-game-even-to-myself.html"): "Mindy Hung",
+}
+
 
 def is_nonessay(url: str, author: str) -> bool:
-    """True for Modern Love *adjacent* content (chiefly the podcast) rather than
-    the written column, judged from the stored URL and byline alone so the check
-    works both at discovery and when re-validating a row already in the index."""
+    """True for Modern Love *adjacent* content (the podcast, reader roundups,
+    contest notices) rather than the written column, judged from the stored URL
+    and byline alone so the check works at discovery and when re-validating an
+    index row."""
     u = (url or "").lower()
     author = (author or "").strip()
     return (
-        "/podcasts/" in u
+        norm_url(url or "") in EXCLUDE_URLS
+        or "/podcasts/" in u
         or "modern-love-podcast" in u
         or "podcast" in author.lower()
         or author in PODCAST_BYLINES
     )
+
+
+def fixed_author(url: str, fallback: str = "") -> str:
+    """The correct byline for a column whose author the paper omitted, else
+    `fallback` (so callers can pass through whatever they already have)."""
+    return BYLINE_FIXES.get(norm_url(url or ""), fallback)
 
 
 def fetch_url(url: str, timeout: int = 60) -> bytes:
