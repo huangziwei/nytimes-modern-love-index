@@ -20,8 +20,8 @@
   table{border-collapse:collapse;width:100%;border:2px solid #000}
   th,td{border:1px solid #000;padding:.4rem .6rem;text-align:left;
     vertical-align:top;white-space:nowrap}
-  th{position:sticky;top:0;background:#fff;color:#fff;cursor:pointer;
-    user-select:none;text-transform:uppercase;font-size:.8rem}
+  th{position:sticky;top:0;background:#fff;color:#000;cursor:pointer;
+    user-select:none;text-transform:uppercase;font-size:.8rem;border-bottom-width:2px}
   th[aria-sort="ascending"]::after{content:" +";color:#000}
   th[aria-sort="descending"]::after{content:" -";color:#000}
   tbody tr:hover{background:#f2f2f2}
@@ -68,20 +68,25 @@
 <script>
 const DATA = window.__INDEX__ || fetch("index.json").then(r => r.json());
 let rows = [], sortKey = "n", sortDir = 1, q = "";
+const FIRST_DIR = { n: 1, date: -1, title: 1, author: 1 };  // first-click sort direction
 
 const esc = s => (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const hi = (s, term) => {
-  s = esc(s);
-  if (!term) return s;
-  try { return s.replace(new RegExp("("+term.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")","ig"), "<mark>$1</mark>"); }
-  catch { return s; }
-};
+const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// Whole-word search: split the query into words and match each on word
+// boundaries, so "cat" finds the word "cat" — not Scattered, Cathy, Dedicated…
+const queryTokens = () => q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+const hi = (s, rx) => { s = esc(s); return rx ? s.replace(rx, "<mark>$1</mark>") : s; };
 
 function render(){
-  const term = q.trim().toLowerCase();
+  const toks = queryTokens();
+  const res = toks.map(t => new RegExp("\\b" + escapeRe(t) + "\\b", "i"));
+  const rx = toks.length
+    ? new RegExp("\\b(" + toks.map(escapeRe).join("|") + ")\\b", "ig") : null;
   let view = rows;
-  if (term) view = rows.filter(r =>
-    (r.title+" "+r.author+" "+r.date+" #"+r.n).toLowerCase().includes(term));
+  if (res.length) view = rows.filter(r => {
+    const hay = r.title + " " + r.author + " " + r.date + " #" + r.n;
+    return res.every(re => re.test(hay));
+  });
   view = view.slice().sort((a,b)=>{
     let x=a[sortKey], y=b[sortKey];
     if (sortKey==="n"){ x=+x; y=+y; }
@@ -91,16 +96,16 @@ function render(){
     <tr>
       <td class="n">${r.n}</td>
       <td class="date">${r.date}</td>
-      <td class="title"><a href="${esc(r.url)}" target="_blank" rel="noopener">${hi(r.title, q.trim())}</a></td>
-      <td class="${r.author?"":"pending"}">${r.author ? hi(r.author, q.trim()) : "—"}</td>
+      <td class="title"><a href="${esc(r.url)}" target="_blank" rel="noopener">${hi(r.title, rx)}</a></td>
+      <td class="${r.author?"":"pending"}">${r.author ? hi(r.author, rx) : "—"}</td>
     </tr>`).join("");
   document.getElementById("count").textContent =
-    term ? `${view.length.toLocaleString()} of ${rows.length.toLocaleString()}`
-         : `${rows.length.toLocaleString()} columns`;
+    toks.length ? `${view.length.toLocaleString()} of ${rows.length.toLocaleString()}`
+                : `${rows.length.toLocaleString()} columns`;
 }
 
 function setSort(key){
-  if (sortKey===key) sortDir*=-1; else { sortKey=key; sortDir=1; }
+  if (sortKey===key) sortDir*=-1; else { sortKey=key; sortDir=FIRST_DIR[key] || 1; }
   document.querySelectorAll("th").forEach(th=>{
     if (th.dataset.key===sortKey) th.setAttribute("aria-sort", sortDir>0?"ascending":"descending");
     else th.removeAttribute("aria-sort");

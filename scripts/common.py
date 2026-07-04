@@ -50,9 +50,11 @@ def is_nonessay(url: str, author: str) -> bool:
     """True for Modern Love *adjacent* content (chiefly the podcast) rather than
     the written column, judged from the stored URL and byline alone so the check
     works both at discovery and when re-validating a row already in the index."""
+    u = (url or "").lower()
     author = (author or "").strip()
     return (
-        "/podcasts/" in (url or "").lower()
+        "/podcasts/" in u
+        or "modern-love-podcast" in u
         or "podcast" in author.lower()
         or author in PODCAST_BYLINES
     )

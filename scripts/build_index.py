@@ -69,6 +69,10 @@ def main() -> int:
                          "author": r.get("author", ""), "url": r["url"]})
             have.add(u)
 
+    # Exclude Modern Love Podcast episodes (and other non-essay rows) from the
+    # public index, whether they arrived via the crawl or a prior API run.
+    rows = [r for r in rows if not common.is_nonessay(r["url"], r.get("author", ""))]
+
     rows.sort(key=lambda r: (r["date"], common.norm_url(r["url"])))
     rows = [{"n": i, "date": r["date"], "title": r["title"],
              "author": r["author"], "url": r["url"]} for i, r in enumerate(rows, 1)]
