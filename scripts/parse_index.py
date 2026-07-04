@@ -14,13 +14,20 @@ from bs4 import BeautifulSoup
 
 import common
 
+# Ben Koski's unofficial index of every Modern Love column.
+INDEX_URL = "https://ben.koski.us/nyt/modern-love"
 # Sections that are readable essays. `podcasts` are audio episodes (no text).
 KEEP_SECTIONS = {"style", "fashion", "garden"}
 URL_RE = re.compile(r"nytimes\.com/(\d{4})/(\d{2})/(\d{2})/([a-z]+)/([a-z0-9-]+)\.html")
 
 
 def main() -> int:
-    html = (common.DATA / "index.html").read_text(encoding="utf-8")
+    index_path = common.DATA / "index.html"
+    if not index_path.exists():
+        common.DATA.mkdir(parents=True, exist_ok=True)
+        print(f"downloading index from {INDEX_URL} …")
+        index_path.write_bytes(common.fetch_url(INDEX_URL))
+    html = index_path.read_text(encoding="utf-8")
     soup = BeautifulSoup(html, "lxml")
 
     seen: set[str] = set()

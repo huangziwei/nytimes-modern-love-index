@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Playwright: browser binaries and your logged-in NYT profile — never commit
+.pw-browsers/
+.pw-profile/
+
+# Everything the pipeline downloads or builds: the crawled columns, your NYT
+# session (data/state.json), fetched assets, and the EPUB. This is copyrighted
+# content and personal secrets — it must stay out of the repo.
+data/
+
+# macOS
+.DS_Store

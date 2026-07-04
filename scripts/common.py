@@ -10,8 +10,10 @@ login and fetch scripts share one source of truth.
 
 from __future__ import annotations
 
+import gzip
 import os
 import time
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -22,6 +24,33 @@ PROFILE = ROOT / ".pw-profile"          # persistent login lives here
 HTML_DIR = DATA / "html"
 MD_DIR = DATA / "markdown"
 IMG_DIR = DATA / "images"
+FONTS_DIR = DATA / "fonts"
+
+# League Spartan (SIL OFL) — Standard Ebooks' titling face, used on the cover
+# and for chapter titles. Fetched on demand so the repo stays code-only.
+FONT_WEIGHTS = (400, 700, 900)
+_FONT_URL = ("https://cdn.jsdelivr.net/npm/@fontsource/league-spartan/files/"
+             "league-spartan-latin-{w}-normal.woff2")
+
+
+def fetch_url(url: str, timeout: int = 60) -> bytes:
+    """GET a URL, transparently handling gzip (used for assets, not NYT)."""
+    req = urllib.request.Request(
+        url, headers={"User-Agent": UA, "Accept-Encoding": "gzip"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
+        data = r.read()
+    if data[:2] == b"\x1f\x8b":
+        data = gzip.decompress(data)
+    return data
+
+
+def ensure_fonts() -> None:
+    """Download the League Spartan weights into data/fonts if missing."""
+    FONTS_DIR.mkdir(parents=True, exist_ok=True)
+    for w in FONT_WEIGHTS:
+        dest = FONTS_DIR / f"league-spartan-{w}.woff2"
+        if not dest.exists() or dest.stat().st_size < 2000:
+            dest.write_bytes(fetch_url(_FONT_URL.format(w=w)))
 
 HOME = "https://www.nytimes.com/"
 # UA major version tracks the bundled Chromium (149.x) so it matches the engine.

@@ -15,11 +15,9 @@ import base64
 
 import common
 
-FONTS = common.DATA / "fonts"
-
 
 def face(weight: int) -> str:
-    data = (FONTS / f"league-spartan-{weight}.woff2").read_bytes()
+    data = (common.FONTS_DIR / f"league-spartan-{weight}.woff2").read_bytes()
     b64 = base64.b64encode(data).decode()
     return (f'@font-face{{font-family:"League Spartan";font-weight:{weight};'
             f'font-style:normal;font-display:swap;'
@@ -97,7 +95,8 @@ p.author,.author,.subtitle{{ font-family:"League Spartan",sans-serif; font-weigh
 
 
 def main() -> int:
-    css = CSS.format(faces="\n".join(face(w) for w in (400, 700, 900)))
+    common.ensure_fonts()
+    css = CSS.format(faces="\n".join(face(w) for w in common.FONT_WEIGHTS))
     out = common.DATA / "epub.css"
     out.write_text(css.strip() + "\n", encoding="utf-8")
     print(f"wrote {out} ({out.stat().st_size // 1024} KB, fonts embedded)")
