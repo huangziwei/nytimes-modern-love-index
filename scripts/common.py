@@ -27,6 +27,22 @@ HTML_DIR = DATA / "html"
 MD_DIR = DATA / "markdown"
 IMG_DIR = DATA / "images"
 FONTS_DIR = DATA / "fonts"
+COVERS_DIR = DATA / "covers"        # per-year covers; the omnibus one is DATA/cover.jpg
+
+# Column filenames are `YYYY-MM-DD-title-slug.md`.
+SLUG_DATE = re.compile(r"^(\d{4})-\d{2}-\d{2}-")
+
+
+def slug_year(name: str) -> int | None:
+    """The year of a column from its slug, or None if the slug isn't dated."""
+    m = SLUG_DATE.match(name)
+    return int(m.group(1)) if m else None
+
+
+def cover_path(year: int | None = None) -> Path:
+    """Where a volume's cover lives. make_cover.py writes it, build_epub.py
+    embeds it, so both agree on the name here."""
+    return DATA / "cover.jpg" if year is None else COVERS_DIR / f"cover-{year}.jpg"
 
 # League Spartan (SIL OFL) — Standard Ebooks' titling face, used on the cover
 # and for chapter titles. Fetched on demand so the repo stays code-only.
